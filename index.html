@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alien Paycheck Shootout: Math 10-3</title>
+    <title>Math 10-3 Alien Attack</title>
     <style>
         body {
             font-family: 'Courier New', Courier, monospace;
@@ -57,7 +57,7 @@
             max-height: 350px;
             overflow-y: auto;
             color: #c5c6c7;
-            z-index: 10;
+            z-index: 20; 
             box-shadow: 0 0 30px rgba(0,0,0,0.9);
         }
         #summaryScreen h2 { margin-top: 0; color: #66fcf1; text-align: center; }
@@ -105,8 +105,8 @@
 </head>
 <body>
 
-    <h1>ALIEN PAYCHECK SHOOTOUT</h1>
-    <div class="instructions">Blast the alien holding the correct answer!</div>
+    <h1>MATH 10-3: ALIEN ATTACK</h1>
+    <div class="instructions">Calculate the paycheck to save the galaxy!</div>
     
     <div class="game-wrapper">
         <canvas id="gameCanvas" width="800" height="500"></canvas>
@@ -133,7 +133,7 @@
         }
     }
 
-    function playSound(type) {
+    function playSound(type, pitchMultiplier = 1) {
         if (!audioCtx) return;
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
@@ -142,10 +142,11 @@
 
         const now = audioCtx.currentTime;
         if (type === 'shoot') {
-            // Updated synth for a snappier plasma 'pew'
             osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(800, now);
-            osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
+            const baseFreq = 800;
+            const finalFreq = 100;
+            osc.frequency.setValueAtTime(baseFreq * pitchMultiplier, now);
+            osc.frequency.exponentialRampToValueAtTime(finalFreq, now + 0.15);
             gainNode.gain.setValueAtTime(0.2, now);
             gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
             osc.start(now);
@@ -170,10 +171,11 @@
         }
     }
 
+    // Game States: 'START', 'PLAYING', 'GAMEOVER'
+    let gameState = 'START'; 
     let score = 0;
     let questionNumber = 1;
     const totalQuestions = 10;
-    let isGameOver = false;
     let targets = [];
     let confetti = [];
     let history = []; 
@@ -186,7 +188,14 @@
     let feedbackMsg = "";
     let pauseTimer = 0;
     let lasers = [];
-    let alienHue = 0; // Tracks the color shift of the end-screen alien
+    
+    // End-screen variables
+    let finalAliens = [];
+    let alienHue = 0; 
+    let bonusScore = 0;
+    let comboMultiplier = 1;
+    let lastComboHitTime = 0;
+    const COMBO_TIMEOUT = 1000; 
 
     const alienEmojis = ['👾', '👽', '🛸', '🤖'];
 
@@ -213,6 +222,84 @@
             ctx.rotate(this.rotation * Math.PI / 180);
             ctx.fillStyle = this.color;
             ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+            ctx.restore();
+        }
+    }
+
+    class FinalScreenAlien {
+        constructor(isCentral) {
+            this.isCentral = isCentral;
+            this.radius = isCentral ? 70 : 35;
+            this.x = isCentral ? canvas.width / 2 : Math.random() * canvas.width;
+            this.y = isCentral ? canvas.height / 2 + 20 : Math.random() * (canvas.height - 150) + 120;
+            
+            if (!isCentral) {
+                this.dx = (Math.random() - 0.5) * 2;
+                this.dy = (Math.random() - 0.5) * 2;
+                while (Math.abs(this.x - canvas.width/2) < 150 && Math.abs(this.y - (canvas.height/2+20)) < 150) {
+                    this.x = Math.random() * canvas.width;
+                    this.y = Math.random() * (canvas.height - 150) + 120;
+                }
+            } else {
+                this.dx = 0; this.dy = 0;
+            }
+            this.emoji = alienEmojis[Math.floor(Math.random() * alienEmojis.length)];
+            this.baseHue = Math.random() * 360;
+            this.baseSize = isCentral ? 120 : 60;
+            this.baseHandsSize = isCentral ? 50 : 25;
+        }
+
+        panic(targetX, targetY) {
+            if (this.isCentral) return;
+            // Calculate direction to the mouse click
+            const dx = targetX - this.x;
+            const dy = targetY - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist > 0) {
+                // Swarm towards the laser blast quickly
+                this.dx = (dx / dist) * 7;
+                this.dy = (dy / dist) * 7;
+            }
+        }
+
+        update(time) {
+            if (!this.isCentral) {
+                if (this.x + this.radius > canvas.width || this.x - this.radius < 0) this.dx *= -1;
+                if (this.y + this.radius > canvas.height || this.y - this.radius < 100) this.dy *= -1;
+                this.x += this.dx;
+                this.y += this.dy;
+            }
+            this.draw(time);
+        }
+
+        draw(time) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            
+            if (this.isCentral) {
+                ctx.filter = `hue-rotate(${alienHue}deg)`;
+            } else {
+                ctx.filter = `hue-rotate(${this.baseHue + Math.sin(time / 500) * 30}deg)`;
+            }
+            
+            const bobFreq = this.isCentral ? 150 : (200 + Math.random()*50);
+            const rotFreq = this.isCentral ? 200 : (250 + Math.random()*50);
+            const bobOffset = this.isCentral ? 20 : 10;
+            const rotOffset = this.isCentral ? 0.2 : 0.1;
+
+            ctx.translate(0, Math.sin(time / bobFreq) * bobOffset); 
+            ctx.rotate(Math.sin(time / rotFreq) * rotOffset);
+            
+            ctx.font = `${this.baseSize}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.emoji, 0, 0);
+            
+            if (score === 10 || this.isCentral) {
+                ctx.font = `${this.baseHandsSize}px Arial`;
+                ctx.fillText('🙌', 0, - (this.baseSize * 0.75));
+            }
+            
             ctx.restore();
         }
     }
@@ -305,6 +392,26 @@
         });
     }
 
+    function drawStartScreen(time) {
+        ctx.fillStyle = '#1f2833';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#66fcf1';
+        ctx.font = 'bold 50px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText("MATH 10-3", canvas.width / 2, canvas.height / 2 - 60);
+        ctx.fillText("ALIEN ATTACK", canvas.width / 2, canvas.height / 2 - 10);
+
+        ctx.fillStyle = '#f1c40f';
+        ctx.font = 'bold 24px Courier New';
+        ctx.fillText("Gross Pay, Net Pay & Deductions", canvas.width / 2, canvas.height / 2 + 40);
+
+        // Pulsing text effect
+        ctx.fillStyle = `rgba(197, 198, 199, ${0.5 + Math.sin(time / 200) * 0.5})`;
+        ctx.font = 'bold 22px Courier New';
+        ctx.fillText("- CLICK ANYWHERE TO START -", canvas.width / 2, canvas.height / 2 + 110);
+    }
+
     function drawUI() {
         ctx.fillStyle = '#0b0c10';
         ctx.fillRect(0, 0, canvas.width, 100);
@@ -363,31 +470,6 @@
         }
     }
 
-    function drawEndScreenAlien(time) {
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2 + 20);
-        
-        // Apply the color shifting filter
-        ctx.filter = `hue-rotate(${alienHue}deg)`;
-        
-        // Bobbing up and down + slight rotation
-        ctx.translate(0, Math.sin(time / 150) * 20); 
-        ctx.rotate(Math.sin(time / 200) * 0.2);
-        
-        ctx.font = '120px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('👽', 0, 0);
-        
-        // Dancing hands if perfect score
-        if (score === 10) {
-            ctx.font = '50px Arial';
-            ctx.fillText('🙌', 0, -90);
-        }
-        
-        ctx.restore();
-    }
-
     function showSummary() {
         let html = '<h2>Teacher Summary</h2>';
         
@@ -407,7 +489,7 @@
                 }
             });
         }
-        html += '<button class="close-btn" onclick="closeSummary()">Close Summary & Blast Alien</button>';
+        html += '<button class="close-btn" onclick="closeSummary()">Close Summary & Disco Party</button>';
         
         summaryScreen.innerHTML = html;
         summaryScreen.style.display = 'block';
@@ -415,31 +497,62 @@
 
     function closeSummary() {
         summaryScreen.style.display = 'none';
+        summaryScreen.style.zIndex = -10; 
     }
 
     function gameLoop(timestamp) {
+        if (gameState === 'START') {
+            drawStartScreen(timestamp);
+            drawLasers(); // Show laser if they click
+            animationId = requestAnimationFrame(gameLoop);
+            return;
+        }
+
         ctx.fillStyle = '#1f2833';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        if (isGameOver) {
-            drawEndScreenAlien(timestamp);
+        if (gameState === 'GAMEOVER') {
+            if (timestamp - lastComboHitTime > COMBO_TIMEOUT && comboMultiplier > 1) {
+                comboMultiplier = 1; 
+            }
+
+            finalAliens.forEach(alien => alien.update(timestamp));
             drawLasers();
 
+            if (score === 10) confetti.forEach(c => { c.update(); c.draw(); });
+            
+            ctx.textAlign = 'center';
             if (score === 10) {
-                confetti.forEach(c => { c.update(); c.draw(); });
                 ctx.fillStyle = '#66fcf1';
                 ctx.font = 'bold 45px Courier New';
-                ctx.textAlign = 'center';
-                ctx.fillText("PERFECT 10/10!", canvas.width / 2, 80);
+                ctx.fillText("PERFECT 10/10!", canvas.width / 2, 60);
             } else {
                 ctx.fillStyle = '#fff';
                 ctx.font = 'bold 40px Courier New';
-                ctx.textAlign = 'center';
-                ctx.fillText("INVASION COMPLETE", canvas.width / 2, 80);
+                ctx.fillText("INVASION COMPLETE", canvas.width / 2, 60);
                 
                 ctx.fillStyle = score >= 5 ? '#f1c40f' : '#e74c3c';
                 ctx.font = 'bold 36px Courier New';
-                ctx.fillText(`FINAL SCORE: ${score} / ${totalQuestions}`, canvas.width / 2, 130);
+                ctx.fillText(`FINAL SCORE: ${score} / ${totalQuestions}`, canvas.width / 2, 100);
+            }
+
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 24px Courier New';
+            ctx.textAlign = 'left';
+            ctx.fillText(`BONUS POINTS: ${bonusScore}`, 20, canvas.height - 30);
+
+            if (comboMultiplier > 1) {
+                if (Math.floor(timestamp / 100) % 2 === 0) ctx.fillStyle = `hsl(${(alienHue + 180)%360}, 100%, 50%)`;
+                else ctx.fillStyle = '#f1c40f';
+                
+                ctx.textAlign = 'right';
+                ctx.font = 'bold 30px Courier New';
+                ctx.fillText(`${comboMultiplier}x COMBO!`, canvas.width - 20, canvas.height - 30);
+            } else {
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#c5c6c7';
+                ctx.font = 'bold 18px Courier New';
+                ctx.fillText(`Blast Central Alien fast!`, canvas.width - 20, canvas.height - 30);
             }
             
             animationId = requestAnimationFrame(gameLoop);
@@ -466,38 +579,57 @@
     canvas.addEventListener('mousedown', (e) => {
         initAudio(); 
         
-        // Prevent shooting if the summary screen is open or game is paused on a wrong answer
         if (summaryScreen.style.display === 'block' || pauseTimer > 0) return; 
 
         const rect = canvas.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
 
-        // Visual and audio effects for the laser shoot (works even on end screen)
-        lasers.push({
-            startX: canvas.width / 2,
-            startY: canvas.height,
-            endX: clickX,
-            endY: clickY,
-            life: 10
-        });
-        playSound('shoot');
+        lasers.push({ startX: canvas.width/2, startY: canvas.height, endX: clickX, endY: clickY, life: 10 });
+        playSound('shoot', 1);
 
-        // Logic for the end-screen interactive alien
-        if (isGameOver) {
-            // Alien hit-box coordinates (centered)
-            const alienX = canvas.width / 2;
-            const alienY = canvas.height / 2 + 20;
-            const dist = Math.sqrt((clickX - alienX) ** 2 + (clickY - alienY) ** 2);
-            
-            // If they blast the alien on the end screen, shift its color
-            if (dist <= 70) {
-                alienHue += Math.floor(Math.random() * 120) + 50; 
-            }
-            return; // Exit out of the listener so it doesn't process standard targets
+        // --- Handle Click on START Screen ---
+        if (gameState === 'START') {
+            gameState = 'PLAYING';
+            generateScenario();
+            return;
         }
 
-        // Logic for standard gameplay targets
+        // --- Handle Click on GAMEOVER Screen ---
+        if (gameState === 'GAMEOVER') {
+            const centralAlien = finalAliens[0];
+            const dist = Math.sqrt((clickX - centralAlien.x) ** 2 + (clickY - centralAlien.y) ** 2);
+            
+            // Panic the background aliens!
+            finalAliens.forEach(alien => alien.panic(clickX, clickY));
+
+            if (dist <= 70) {
+                const now = performance.now();
+                const comboWindowActive = (now - lastComboHitTime) < COMBO_TIMEOUT;
+
+                if (comboWindowActive) {
+                    comboMultiplier++;
+                } else {
+                    comboMultiplier = 1;
+                }
+
+                bonusScore += Math.floor(100 * comboMultiplier);
+                
+                const pitch = Math.min(2.5, 1 + (comboMultiplier * 0.1));
+                playSound('shoot', pitch);
+
+                alienHue += Math.floor(Math.random() * 120) + 50; 
+                ctx.fillStyle = `hsla(${(alienHue+180)%360}, 100%, 50%, 0.2)`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                lastComboHitTime = now; 
+            } else {
+                comboMultiplier = 1;
+            }
+            return; 
+        }
+
+        // --- Standard Gameplay Target Logic ---
         let hit = false;
         targets.forEach((target) => {
             const dist = Math.sqrt((clickX - target.x) ** 2 + (clickY - target.y) ** 2);
@@ -535,8 +667,18 @@
     });
 
     function endGame() {
-        isGameOver = true;
-        alienHue = 0; // Reset color
+        gameState = 'GAMEOVER';
+        alienHue = 0; 
+        bonusScore = 0; 
+        comboMultiplier = 1;
+        
+        finalAliens = [];
+        finalAliens.push(new FinalScreenAlien(true));
+        const numPartyAliens = Math.random() * 15 + (score === 10 ? 30 : 15);
+        for(let i=0; i<numPartyAliens; i++){
+            finalAliens.push(new FinalScreenAlien(false));
+        }
+
         restartBtn.style.display = 'block';
         showSummary(); 
         
@@ -549,19 +691,22 @@
     }
 
     function resetGame() {
+        gameState = 'PLAYING';
         score = 0;
         questionNumber = 1;
-        isGameOver = false;
         confetti = [];
         lasers = [];
         history = [];
         alienHue = 0;
+        bonusScore = 0;
+        finalAliens = [];
         summaryScreen.style.display = 'none'; 
+        summaryScreen.style.zIndex = 20; 
         restartBtn.style.display = 'none';
         generateScenario();
     }
 
-    generateScenario();
+    // Start Animation Loop (waits on Intro Screen)
     requestAnimationFrame(gameLoop);
 
 </script>
