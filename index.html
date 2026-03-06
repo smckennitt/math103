@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alien Paycheck Shootout: Math 10-3</title>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #0b0c10;
+            color: #66fcf1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+            overflow: hidden;
+        }
+        h1 {
+            margin: 0 0 5px 0;
+            color: #45a29e;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            font-size: 2em;
+            text-align: center;
+        }
+        .instructions {
+            margin-bottom: 15px;
+            color: #c5c6c7;
+            font-weight: bold;
+            text-align: center;
+        }
+        .game-wrapper {
+            position: relative;
+            max-width: 100%;
+        }
+        canvas {
+            background-color: #1f2833;
+            border: 4px solid #45a29e;
+            border-radius: 10px;
+            cursor: crosshair;
+            box-shadow: 0 0 30px rgba(102, 252, 241, 0.3);
+            display: block;
+        }
+        #summaryScreen {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(11, 12, 16, 0.95);
+            border: 2px solid #45a29e;
+            padding: 25px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 650px;
+            max-height: 350px;
+            overflow-y: auto;
+            color: #c5c6c7;
+            z-index: 10;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+        #summaryScreen h2 { margin-top: 0; color: #66fcf1; text-align: center; }
+        .summary-item {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #1f2833;
+            padding-bottom: 10px;
+            font-size: 0.95em;
+        }
+        .summary-item:last-child { border-bottom: none; }
+        .summary-incorrect { color: #e74c3c; }
+        .summary-correct { color: #2ecc71; }
+        
+        /* Custom Scrollbar for Summary */
+        #summaryScreen::-webkit-scrollbar { width: 8px; }
+        #summaryScreen::-webkit-scrollbar-track { background: #1f2833; border-radius: 4px; }
+        #summaryScreen::-webkit-scrollbar-thumb { background: #45a29e; border-radius: 4px; }
+
+        #restartBtn {
+            display: none;
+            margin-top: 20px;
+            padding: 15px 40px;
+            font-size: 1.5em;
+            background-color: #66fcf1;
+            color: #0b0c10;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-family: 'Courier New', Courier, monospace;
+            transition: transform 0.2s, background-color 0.2s;
+        }
+        #restartBtn:hover {
+            background-color: #45a29e;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>ALIEN PAYCHECK SHOOTOUT</h1>
+    <div class="instructions">Blast the alien holding the correct answer!</div>
+    
+    <div class="game-wrapper">
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+        <div id="summaryScreen"></div>
+    </div>
+    
+    <button id="restartBtn" onclick="resetGame()">PLAY AGAIN</button>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const restartBtn = document.getElementById('restartBtn');
+    const summaryScreen = document.getElementById('summaryScreen');
+
+    // Audio Context for sound effects
+    let audioCtx;
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+        if (type === 'shoot') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(880, now);
+            osc.frequency.exponentialRampToValueAtTime(110, now + 0.15);
+            gainNode.gain.setValueAtTime(0.1, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            osc.start(now);
+            osc.stop(now + 0.15);
+        } else if (type === 'win') {
+            osc.type = 'triangle';
+            [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+                osc.frequency.setValueAtTime(freq, now + i*0.15);
+            });
+            gainNode.gain.setValueAtTime(0.2, now);
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.6);
+            osc.start(now);
+            osc.stop(now + 0.6);
+        } else if (type === 'error') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+            gainNode.gain.setValueAtTime(0.1, now);
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.3);
+        }
+    }
+
+    // Game Variables
+    let score = 0;
+    let questionNumber = 1;
+    const totalQuestions = 10;
+    let isGameOver = false;
+    let targets = [];
+    let confetti = [];
+    let history = []; // Tracks student answers for the summary
+    let currentQuestion = "";
+    let correctFormula = "";
+    let correctAnswer = 0;
+    let animationId;
+    let flashColor = null;
+    let flashTimer = 0;
+    let feedbackMsg = "";
+    let pauseTimer = 0;
+    let lasers = [];
+
+    const alienEmojis = ['👾', '👽', '🛸', '🤖'];
+
+    class ConfettiParticle {
+        constructor() {
+            this.x = Math.random() * canvas.width;
+            this.y = Math.random() * canvas.height - canvas.height;
+            this.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+            this.size = Math.random() * 10 + 5;
+            this.speedY = Math.random() * 3 + 2;
+            this.speedX = (Math.random() - 0.5) * 2;
+            this.rotation = Math.random() * 360;
+            this.rotSpeed = (Math.random() - 0.5) * 10;
+        }
+        update() {
+            this.y += this.speedY;
+            this.x += this.speedX;
+            this.rotation += this.rotSpeed;
+            if (this.y > canvas.height) this.y = -10;
+        }
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rotation * Math.PI / 180);
+            ctx.fillStyle = this.color;
+            ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+            ctx.restore();
+        }
+    }
+
+    class Target {
+        constructor(x, y, value, isCorrect) {
+            this.x = x;
+            this.y = y;
+            this.value = value;
+            this.isCorrect = isCorrect;
+            this.radius = 45;
+            this.dx = (Math.random() - 0.5) * 2.5;
+            this.dy = (Math.random() - 0.5) * 2.5;
+            this.emoji = alienEmojis[Math.floor(Math.random() * alienEmojis.length)];
+        }
+
+        draw() {
+            ctx.font = '50px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.emoji, this.x, this.y - 15);
+
+            ctx.fillStyle = '#66fcf1';
+            ctx.font = 'bold 22px Courier New';
+            ctx.fillText('$' + this.value, this.x, this.y + 25);
+        }
+
+        update() {
+            if (this.x + this.radius > canvas.width || this.x - this.radius < 0) this.dx *= -1;
+            if (this.y + this.radius > canvas.height || this.y - this.radius < 100) this.dy *= -1;
+
+            this.x += this.dx;
+            this.y += this.dy;
+            this.draw();
+        }
+    }
+
+    function generateScenario() {
+        targets = [];
+        feedbackMsg = "";
+        
+        let gross, deductions, net;
+        let offsets = [];
+
+        // DIFFICULTY PROGRESSION LOGIC
+        if (questionNumber <= 4) {
+            // Level 1-4: Easy Net Pay
+            gross = (Math.floor(Math.random() * 5) + 2) * 100; 
+            deductions = (Math.floor(Math.random() * 4) + 1) * 10; 
+            net = gross - deductions;
+
+            currentQuestion = `Gross: $${gross} | Deductions: $${deductions} | Shoot NET PAY!`;
+            correctAnswer = net;
+            correctFormula = `Gross ($${gross}) - Deductions ($${deductions}) = Net ($${net})`;
+            offsets = [10, 20, 50, 100];
+            
+        } else if (questionNumber <= 7) {
+            // Level 5-7: Moderate Gross Pay
+            net = (Math.floor(Math.random() * 6) + 4) * 50; 
+            deductions = (Math.floor(Math.random() * 4) + 2) * 20; 
+            gross = net + deductions;
+
+            currentQuestion = `Net: $${net} | Deductions: $${deductions} | Shoot GROSS PAY!`;
+            correctAnswer = gross;
+            correctFormula = `Net ($${net}) + Deductions ($${deductions}) = Gross ($${gross})`;
+            offsets = [20, 40, 50, 100];
+
+        } else {
+            // Level 8-10: Trickier Deductions
+            gross = (Math.floor(Math.random() * 6) + 12) * 25; 
+            deductions = (Math.floor(Math.random() * 5) + 3) * 15; 
+            net = gross - deductions;
+
+            currentQuestion = `Gross: $${gross} | Net: $${net} | Shoot DEDUCTIONS!`;
+            correctAnswer = deductions;
+            correctFormula = `Gross ($${gross}) - Net ($${net}) = Deductions ($${deductions})`;
+            offsets = [15, 25, 35, 50];
+        }
+
+        let answers = [correctAnswer];
+        while (answers.length < 4) {
+            let offset = offsets[Math.floor(Math.random() * offsets.length)];
+            let isAdding = Math.random() > 0.5;
+            let wrongAns = isAdding ? correctAnswer + offset : correctAnswer - offset;
+            
+            if (!answers.includes(wrongAns) && wrongAns > 0) {
+                answers.push(wrongAns);
+            }
+        }
+
+        answers.sort(() => Math.random() - 0.5);
+
+        answers.forEach(ans => {
+            let safeX = Math.random() * (canvas.width - 120) + 60;
+            let safeY = Math.random() * (canvas.height - 180) + 120;
+            targets.push(new Target(safeX, safeY, ans, ans === correctAnswer));
+        });
+    }
+
+    function drawUI() {
+        ctx.fillStyle = '#0b0c10';
+        ctx.fillRect(0, 0, canvas.width, 100);
+        ctx.strokeStyle = '#45a29e';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 100);
+        ctx.lineTo(canvas.width, 100);
+        ctx.stroke();
+
+        ctx.fillStyle = '#c5c6c7';
+        ctx.font = 'bold 20px Courier New';
+        ctx.textAlign = 'left';
+        ctx.fillText(`WAVE: ${questionNumber}/${totalQuestions}`, 20, 40);
+
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#66fcf1';
+        ctx.fillText(`SCORE: ${score}`, canvas.width - 20, 40);
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#f1c40f';
+        ctx.font = 'bold 22px Courier New';
+        ctx.fillText(currentQuestion, canvas.width / 2, 80);
+
+        if (flashTimer > 0) {
+            ctx.fillStyle = flashColor;
+            ctx.fillRect(0, 100, canvas.width, canvas.height - 100);
+            flashTimer--;
+        }
+
+        if (feedbackMsg !== "") {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+            ctx.fillRect(0, 100, canvas.width, canvas.height - 100);
+            
+            ctx.fillStyle = '#e74c3c';
+            ctx.font = 'bold 36px Courier New';
+            ctx.fillText("MISSED!", canvas.width / 2, canvas.height / 2 - 30);
+            
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 24px Courier New';
+            ctx.fillText(feedbackMsg, canvas.width / 2, canvas.height / 2 + 20);
+        }
+    }
+
+    function drawLasers() {
+        for (let i = lasers.length - 1; i >= 0; i--) {
+            let l = lasers[i];
+            ctx.beginPath();
+            ctx.moveTo(l.startX, l.startY);
+            ctx.lineTo(l.endX, l.endY);
+            ctx.strokeStyle = `rgba(102, 252, 241, ${l.life / 10})`;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            l.life--;
+            if (l.life <= 0) lasers.splice(i, 1);
+        }
+    }
+
+    function drawDancingAlien(time) {
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2 - 40);
+        ctx.translate(0, Math.sin(time / 150) * 20); 
+        ctx.rotate(Math.sin(time / 200) * 0.2);
+        
+        ctx.font = '100px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('👽', 0, 0);
+        
+        ctx.font = '40px Arial';
+        ctx.fillText('🙌', 0, -80);
+        ctx.restore();
+    }
+
+    function showSummary() {
+        let html = '<h2>Teacher Summary</h2>';
+        
+        if (score === 10) {
+            html += '<p style="text-align:center; color:#2ecc71; font-size:1.2em;">Flawless victory! No mistakes to report.</p>';
+        } else {
+            html += '<p style="text-align:center; color:#f1c40f;">Questions to review:</p>';
+            history.forEach(item => {
+                if (!item.isRight) {
+                    html += `
+                    <div class="summary-item">
+                        <strong>Wave ${item.qNum}:</strong> ${item.question}<br>
+                        Student Answer: <span class="summary-incorrect">$${item.chosen}</span> | 
+                        Correct Answer: <span class="summary-correct">$${item.correct}</span><br>
+                        <em>Review Formula: ${item.formula}</em>
+                    </div>`;
+                }
+            });
+        }
+        
+        summaryScreen.innerHTML = html;
+        summaryScreen.style.display = 'block';
+    }
+
+    function gameLoop(timestamp) {
+        if (isGameOver) {
+            ctx.fillStyle = '#0b0c10';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (score === 10) {
+                confetti.forEach(c => { c.update(); c.draw(); });
+                drawDancingAlien(timestamp);
+                
+                ctx.fillStyle = '#66fcf1';
+                ctx.font = 'bold 45px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText("PERFECT 10/10!", canvas.width / 2, 80);
+            } else {
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 40px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText("INVASION COMPLETE", canvas.width / 2, 80);
+                
+                ctx.fillStyle = score >= 5 ? '#f1c40f' : '#e74c3c';
+                ctx.font = 'bold 36px Courier New';
+                ctx.fillText(`FINAL SCORE: ${score} / ${totalQuestions}`, canvas.width / 2, 130);
+            }
+            
+            animationId = requestAnimationFrame(gameLoop);
+            return;
+        }
+
+        ctx.fillStyle = '#1f2833';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        drawUI();
+        drawLasers();
+
+        if (pauseTimer > 0) {
+            pauseTimer--;
+            if (pauseTimer <= 0) {
+                questionNumber++;
+                if (questionNumber > totalQuestions) endGame();
+                else generateScenario();
+            }
+        } else {
+            targets.forEach(target => target.update());
+        }
+
+        animationId = requestAnimationFrame(gameLoop);
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+        initAudio(); 
+        if (isGameOver || pauseTimer > 0) return; 
+
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+
+        lasers.push({
+            startX: canvas.width / 2,
+            startY: canvas.height,
+            endX: clickX,
+            endY: clickY,
+            life: 10
+        });
+        playSound('shoot');
+
+        let hit = false;
+
+        targets.forEach((target) => {
+            const dist = Math.sqrt((clickX - target.x) ** 2 + (clickY - target.y) ** 2);
+            if (dist <= target.radius && !hit) {
+                hit = true;
+                
+                // Save answer to history for the summary screen
+                history.push({
+                    qNum: questionNumber,
+                    question: currentQuestion,
+                    chosen: target.value,
+                    correct: correctAnswer,
+                    isRight: target.isCorrect,
+                    formula: correctFormula
+                });
+
+                if (target.isCorrect) {
+                    score++;
+                    flashColor = 'rgba(102, 252, 241, 0.3)'; 
+                    flashTimer = 10;
+                    
+                    setTimeout(() => {
+                        questionNumber++;
+                        if (questionNumber > totalQuestions) endGame();
+                        else generateScenario();
+                    }, 200);
+                } else {
+                    playSound('error');
+                    flashColor = 'rgba(231, 76, 60, 0.4)'; 
+                    flashTimer = 10;
+                    feedbackMsg = correctFormula;
+                    pauseTimer = 180; 
+                }
+            }
+        });
+    });
+
+    function endGame() {
+        isGameOver = true;
+        restartBtn.style.display = 'block';
+        showSummary(); // Trigger the overlay
+        
+        if (score === 10) {
+            playSound('win');
+            for(let i = 0; i < 150; i++) {
+                confetti.push(new ConfettiParticle());
+            }
+        }
+    }
+
+    function resetGame() {
+        score = 0;
+        questionNumber = 1;
+        isGameOver = false;
+        confetti = [];
+        lasers = [];
+        history = [];
+        summaryScreen.style.display = 'none'; // Hide overlay on restart
+        restartBtn.style.display = 'none';
+        generateScenario();
+    }
+
+    // Start Game
+    generateScenario();
+    requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>
