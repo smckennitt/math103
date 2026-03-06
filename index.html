@@ -42,7 +42,8 @@
             box-shadow: 0 0 30px rgba(102, 252, 241, 0.3);
             display: block;
         }
-        #summaryScreen {
+        /* Overlays for Summary and Selection */
+        .overlay-screen {
             display: none;
             position: absolute;
             top: 50%;
@@ -50,7 +51,7 @@
             transform: translate(-50%, -50%);
             background-color: rgba(11, 12, 16, 0.95);
             border: 2px solid #45a29e;
-            padding: 25px;
+            padding: 30px;
             border-radius: 10px;
             width: 80%;
             max-width: 650px;
@@ -59,31 +60,33 @@
             color: #c5c6c7;
             z-index: 20; 
             box-shadow: 0 0 30px rgba(0,0,0,0.9);
+            text-align: center;
         }
-        #summaryScreen h2 { margin-top: 0; color: #66fcf1; text-align: center; }
+        .overlay-screen h2 { margin-top: 0; color: #66fcf1; text-align: center; font-size: 2em;}
         .summary-item {
             margin-bottom: 15px;
             border-bottom: 1px solid #1f2833;
             padding-bottom: 10px;
             font-size: 0.95em;
+            text-align: left;
         }
         .summary-item:last-child { border-bottom: none; }
-        .summary-incorrect { color: #e74c3c; }
-        .summary-correct { color: #2ecc71; }
+        .summary-incorrect { color: #e74c3c; font-weight: bold; }
+        .summary-correct { color: #2ecc71; font-weight: bold; }
         
-        #summaryScreen::-webkit-scrollbar { width: 8px; }
-        #summaryScreen::-webkit-scrollbar-track { background: #1f2833; border-radius: 4px; }
-        #summaryScreen::-webkit-scrollbar-thumb { background: #45a29e; border-radius: 4px; }
+        .overlay-screen::-webkit-scrollbar { width: 8px; }
+        .overlay-screen::-webkit-scrollbar-track { background: #1f2833; border-radius: 4px; }
+        .overlay-screen::-webkit-scrollbar-thumb { background: #45a29e; border-radius: 4px; }
 
         .btn-group {
             display: flex;
-            justify-content: center;
-            gap: 20px;
+            flex-direction: column;
+            gap: 15px;
             margin-top: 20px;
         }
 
         button {
-            padding: 12px 30px;
+            padding: 15px 30px;
             font-size: 1.2em;
             background-color: #66fcf1;
             color: #0b0c10;
@@ -96,10 +99,10 @@
         }
         button:hover {
             background-color: #45a29e;
-            transform: scale(1.05);
+            transform: scale(1.02);
         }
-        #restartBtn { display: none; }
-        .close-btn { background-color: #e74c3c; color: white; margin-top: 10px; width: 100%; }
+        #restartBtn { display: none; margin-top: 20px;}
+        .close-btn { background-color: #e74c3c; color: white; margin-top: 20px; width: 100%; }
         .close-btn:hover { background-color: #c0392b; }
     </style>
 </head>
@@ -110,18 +113,26 @@
     
     <div class="game-wrapper">
         <canvas id="gameCanvas" width="800" height="500"></canvas>
-        <div id="summaryScreen"></div>
+        
+        <div id="selectionScreen" class="overlay-screen">
+            <h2>SELECT MISSION</h2>
+            <div class="btn-group">
+                <button onclick="startGameMode(1)">MISSION 1: Gross, Net & Deductions</button>
+                <button onclick="startGameMode(2)">MISSION 2: Salary, Wages & Commission</button>
+            </div>
+        </div>
+
+        <div id="summaryScreen" class="overlay-screen"></div>
     </div>
     
-    <div class="btn-group">
-        <button id="restartBtn" onclick="resetGame()">PLAY AGAIN</button>
-    </div>
+    <button id="restartBtn" onclick="returnToMenu()">MAIN MENU</button>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const restartBtn = document.getElementById('restartBtn');
     const summaryScreen = document.getElementById('summaryScreen');
+    const selectionScreen = document.getElementById('selectionScreen');
 
     let audioCtx;
     function initAudio() {
@@ -171,8 +182,9 @@
         }
     }
 
-    // Game States: 'START', 'PLAYING', 'GAMEOVER'
+    // Game States: 'START', 'SELECTING', 'PLAYING', 'GAMEOVER'
     let gameState = 'START'; 
+    let gameMode = 1; // 1 = Deductions, 2 = Salary
     let score = 0;
     let questionNumber = 1;
     const totalQuestions = 10;
@@ -189,6 +201,12 @@
     let pauseTimer = 0;
     let lasers = [];
     
+    // Timer & Mechanics Variables
+    let lastTime = 0;
+    let timeRemaining = 30;
+    let isTimerActive = false;
+    let currentSpeedMult = 1;
+
     // End-screen variables
     let finalAliens = [];
     let alienHue = 0; 
@@ -251,12 +269,10 @@
 
         panic(targetX, targetY) {
             if (this.isCentral) return;
-            // Calculate direction to the mouse click
             const dx = targetX - this.x;
             const dy = targetY - this.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
             if (dist > 0) {
-                // Swarm towards the laser blast quickly
                 this.dx = (dx / dist) * 7;
                 this.dy = (dy / dist) * 7;
             }
@@ -305,14 +321,18 @@
     }
 
     class Target {
-        constructor(x, y, value, isCorrect) {
+        constructor(x, y, value, isCorrect, speedMultiplier, prefix = '$') {
             this.x = x;
             this.y = y;
             this.value = value;
             this.isCorrect = isCorrect;
+            this.prefix = prefix;
             this.radius = 45;
-            this.dx = (Math.random() - 0.5) * 2.5;
-            this.dy = (Math.random() - 0.5) * 2.5;
+            
+            let baseSpeed = Math.random() * 1.5 + 1.0; 
+            this.dx = (Math.random() < 0.5 ? 1 : -1) * baseSpeed * speedMultiplier;
+            this.dy = (Math.random() < 0.5 ? 1 : -1) * baseSpeed * speedMultiplier;
+            
             this.emoji = alienEmojis[Math.floor(Math.random() * alienEmojis.length)];
         }
 
@@ -323,8 +343,14 @@
             ctx.fillText(this.emoji, this.x, this.y - 15);
 
             ctx.fillStyle = '#66fcf1';
-            ctx.font = 'bold 22px Courier New';
-            ctx.fillText('$' + this.value, this.x, this.y + 25);
+            // Adjust font size for text-based answers
+            if (typeof this.value === 'string' && this.value.length > 6) {
+                ctx.font = 'bold 13px Courier New';
+            } else {
+                ctx.font = 'bold 22px Courier New';
+            }
+            
+            ctx.fillText(this.prefix + this.value, this.x, this.y + 25);
         }
 
         update() {
@@ -337,12 +363,44 @@
         }
     }
 
+    function startGameMode(mode) {
+        gameMode = mode;
+        selectionScreen.style.display = 'none';
+        gameState = 'PLAYING';
+        score = 0;
+        questionNumber = 1;
+        lastTime = performance.now();
+        generateScenario();
+    }
+
     function generateScenario() {
         targets = [];
         feedbackMsg = "";
         
+        // Dynamic speed and timer rules
+        if (questionNumber <= 4) {
+            currentSpeedMult = 1.0;
+            isTimerActive = false;
+        } else if (questionNumber <= 7) {
+            currentSpeedMult = 1.6;
+            isTimerActive = false;
+        } else {
+            currentSpeedMult = 2.8; 
+            timeRemaining = 30.0;
+            isTimerActive = true;
+        }
+
+        if (gameMode === 1) {
+            generateDeductionsMath();
+        } else {
+            generateSalaryMath();
+        }
+    }
+
+    function generateDeductionsMath() {
         let gross, deductions, net;
-        let offsets = [];
+        let answers = [];
+        let prefix = '$';
 
         if (questionNumber <= 4) {
             gross = (Math.floor(Math.random() * 5) + 2) * 100; 
@@ -352,7 +410,7 @@
             currentQuestion = `Gross: $${gross} | Deductions: $${deductions} | Shoot NET PAY!`;
             correctAnswer = net;
             correctFormula = `Gross ($${gross}) - Deductions ($${deductions}) = Net ($${net})`;
-            offsets = [10, 20, 50, 100];
+            answers = [net, net + 10, net - 20, net + 50, net + 100];
             
         } else if (questionNumber <= 7) {
             net = (Math.floor(Math.random() * 6) + 4) * 50; 
@@ -362,7 +420,7 @@
             currentQuestion = `Net: $${net} | Deductions: $${deductions} | Shoot GROSS PAY!`;
             correctAnswer = gross;
             correctFormula = `Net ($${net}) + Deductions ($${deductions}) = Gross ($${gross})`;
-            offsets = [20, 40, 50, 100];
+            answers = [gross, gross - 20, gross + 40, gross - 50, gross + 100];
 
         } else {
             gross = (Math.floor(Math.random() * 6) + 12) * 25; 
@@ -372,23 +430,96 @@
             currentQuestion = `Gross: $${gross} | Net: $${net} | Shoot DEDUCTIONS!`;
             correctAnswer = deductions;
             correctFormula = `Gross ($${gross}) - Net ($${net}) = Deductions ($${deductions})`;
-            offsets = [15, 25, 35, 50];
+            answers = [deductions, deductions + 15, deductions - 15, deductions + 25, deductions + 50];
         }
 
-        let answers = [correctAnswer];
-        while (answers.length < 4) {
-            let offset = offsets[Math.floor(Math.random() * offsets.length)];
-            let isAdding = Math.random() > 0.5;
-            let wrongAns = isAdding ? correctAnswer + offset : correctAnswer - offset;
-            if (!answers.includes(wrongAns) && wrongAns > 0) answers.push(wrongAns);
+        // Keep correct answer, grab 3 unique distractors
+        let finalAnswers = [correctAnswer];
+        for (let i = 1; i < answers.length && finalAnswers.length < 4; i++) {
+            if (!finalAnswers.includes(answers[i]) && answers[i] > 0) {
+                finalAnswers.push(answers[i]);
+            }
         }
 
-        answers.sort(() => Math.random() - 0.5);
+        finalAnswers.sort(() => Math.random() - 0.5);
 
-        answers.forEach(ans => {
+        finalAnswers.forEach(ans => {
             let safeX = Math.random() * (canvas.width - 120) + 60;
             let safeY = Math.random() * (canvas.height - 180) + 120;
-            targets.push(new Target(safeX, safeY, ans, ans === correctAnswer));
+            targets.push(new Target(safeX, safeY, ans, ans === correctAnswer, currentSpeedMult, prefix));
+        });
+    }
+
+    function generateSalaryMath() {
+        let answers = [];
+        let prefix = '$';
+
+        if (questionNumber <= 2) {
+            // Annual vs Monthly
+            let monthly = (Math.floor(Math.random() * 20) + 10) * 100; // 1000 to 3000
+            let annual = monthly * 12;
+            currentQuestion = `Salary: $${monthly}/month. Shoot ANNUAL INCOME!`;
+            correctAnswer = annual;
+            correctFormula = `$${monthly}/mo x 12 months = $${annual}`;
+            answers = [annual, monthly * 10, monthly * 24, monthly * 52];
+
+        } else if (questionNumber <= 4) {
+            // Percent to Decimal
+            let pct = (Math.floor(Math.random() * 8) + 2) + 0.25 * Math.floor(Math.random() * 4); 
+            let dec = (pct / 100).toFixed(4).replace(/0+$/, '').replace(/\.$/, ''); 
+            currentQuestion = `Convert ${pct}% to a decimal!`;
+            correctAnswer = dec;
+            correctFormula = `${pct} ÷ 100 = ${dec}`;
+            prefix = '';
+            answers = [dec, (pct/10).toFixed(3), (pct).toFixed(2), (pct/1000).toFixed(5)];
+
+        } else if (questionNumber <= 6) {
+            // Commission
+            let pct = Math.floor(Math.random() * 10) + 5; 
+            let sale = (Math.floor(Math.random() * 40) + 10) * 100; 
+            let comm = sale * (pct / 100);
+            currentQuestion = `${pct}% commission on a $${sale} sale. EARNINGS?`;
+            correctAnswer = comm;
+            correctFormula = `$${sale} x ${pct}% = $${comm}`;
+            answers = [comm, sale * (pct/10), comm + 100, sale * 0.01];
+
+        } else if (questionNumber <= 8) {
+            // Time and a half
+            let wage = Math.floor(Math.random() * 10) + 15; 
+            let hrs = Math.floor(Math.random() * 6) + 4; 
+            let pay = wage * 1.5 * hrs;
+            currentQuestion = `Holiday! $${wage}/hr for ${hrs} hrs @ time-and-a-half. PAY?`;
+            correctAnswer = pay;
+            correctFormula = `$${wage} x 1.5 x ${hrs} hrs = $${pay}`;
+            answers = [pay, wage * hrs, wage * 2 * hrs, (wage * 1.5 * hrs) + wage];
+
+        } else if (questionNumber === 9) {
+            // Isolation Pay Def
+            currentQuestion = `What is ISOLATION PAY?`;
+            correctAnswer = "RemoteBonus";
+            correctFormula = "Isolation pay is extra money for working in remote areas.";
+            prefix = '';
+            answers = ["RemoteBonus", "Sick Pay", "VacationPay", "Union Dues"];
+            
+        } else {
+            // Isolation Math
+            let base = (Math.floor(Math.random() * 20) + 20) * 100; 
+            let iso = (Math.floor(Math.random() * 5) + 2) * 100; 
+            let total = base + iso;
+            currentQuestion = `Base: $${base} | Isolation Pay: $${iso} | TOTAL PAY?`;
+            correctAnswer = total;
+            correctFormula = `Base ($${base}) + Isolation ($${iso}) = Total ($${total})`;
+            answers = [total, base - iso, base, iso];
+        }
+
+        // Shuffle and assign targets
+        let finalAnswers = answers.slice(0, 4);
+        finalAnswers.sort(() => Math.random() - 0.5);
+
+        finalAnswers.forEach(ans => {
+            let safeX = Math.random() * (canvas.width - 120) + 60;
+            let safeY = Math.random() * (canvas.height - 180) + 120;
+            targets.push(new Target(safeX, safeY, ans, ans === correctAnswer, currentSpeedMult, prefix));
         });
     }
 
@@ -404,9 +535,8 @@
 
         ctx.fillStyle = '#f1c40f';
         ctx.font = 'bold 24px Courier New';
-        ctx.fillText("Gross Pay, Net Pay & Deductions", canvas.width / 2, canvas.height / 2 + 40);
+        ctx.fillText("Save the Galaxy with Paycheck Math!", canvas.width / 2, canvas.height / 2 + 40);
 
-        // Pulsing text effect
         ctx.fillStyle = `rgba(197, 198, 199, ${0.5 + Math.sin(time / 200) * 0.5})`;
         ctx.font = 'bold 22px Courier New';
         ctx.fillText("- CLICK ANYWHERE TO START -", canvas.width / 2, canvas.height / 2 + 110);
@@ -431,6 +561,13 @@
         ctx.fillStyle = '#66fcf1';
         ctx.fillText(`SCORE: ${score}`, canvas.width - 20, 40);
 
+        if (isTimerActive) {
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 26px Courier New';
+            ctx.fillStyle = timeRemaining <= 5 ? '#e74c3c' : '#f1c40f';
+            ctx.fillText(`TIME: ${Math.ceil(timeRemaining)}s`, canvas.width / 2, 40);
+        }
+
         ctx.textAlign = 'center';
         ctx.fillStyle = '#f1c40f';
         ctx.font = 'bold 22px Courier New';
@@ -448,11 +585,12 @@
             
             ctx.fillStyle = '#e74c3c';
             ctx.font = 'bold 36px Courier New';
-            ctx.fillText("MISSED!", canvas.width / 2, canvas.height / 2 - 30);
+            ctx.fillText(feedbackMsg.includes("TIME'S UP") ? "TIME'S UP!" : "MISSED!", canvas.width / 2, canvas.height / 2 - 30);
             
             ctx.fillStyle = '#fff';
             ctx.font = 'bold 24px Courier New';
-            ctx.fillText(feedbackMsg, canvas.width / 2, canvas.height / 2 + 20);
+            let displayFormula = feedbackMsg.replace("TIME'S UP! ", "");
+            ctx.fillText(displayFormula, canvas.width / 2, canvas.height / 2 + 20);
         }
     }
 
@@ -470,8 +608,26 @@
         }
     }
 
+    function triggerTimeout() {
+        history.push({
+            qNum: questionNumber,
+            question: currentQuestion,
+            chosen: "Out of Time",
+            correct: correctAnswer,
+            isRight: false,
+            formula: correctFormula
+        });
+
+        playSound('error');
+        flashColor = 'rgba(231, 76, 60, 0.4)'; 
+        flashTimer = 10;
+        feedbackMsg = "TIME'S UP! " + correctFormula;
+        pauseTimer = 180; 
+        isTimerActive = false;
+    }
+
     function showSummary() {
-        let html = '<h2>Teacher Summary</h2>';
+        let html = '<h2>Mission Report</h2>';
         
         if (score === 10) {
             html += '<p style="text-align:center; color:#2ecc71; font-size:1.2em;">Flawless victory! No mistakes to report.</p>';
@@ -479,11 +635,14 @@
             html += '<p style="text-align:center; color:#f1c40f;">Questions to review:</p>';
             history.forEach(item => {
                 if (!item.isRight) {
+                    let prefix = typeof item.correct === 'number' && item.formula.includes('$') ? '$' : '';
+                    let chosenText = item.chosen === "Out of Time" ? item.chosen : `${prefix}${item.chosen}`;
+                    
                     html += `
                     <div class="summary-item">
                         <strong>Wave ${item.qNum}:</strong> ${item.question}<br>
-                        Student Answer: <span class="summary-incorrect">$${item.chosen}</span> | 
-                        Correct Answer: <span class="summary-correct">$${item.correct}</span><br>
+                        Student Answer: <span class="summary-incorrect">${chosenText}</span> | 
+                        Correct Answer: <span class="summary-correct">${prefix}${item.correct}</span><br>
                         <em>Review Formula: ${item.formula}</em>
                     </div>`;
                 }
@@ -500,10 +659,30 @@
         summaryScreen.style.zIndex = -10; 
     }
 
+    function returnToMenu() {
+        gameState = 'SELECTING';
+        selectionScreen.style.display = 'block';
+        restartBtn.style.display = 'none';
+        summaryScreen.style.display = 'none';
+        summaryScreen.style.zIndex = 20;
+        ctx.fillStyle = '#1f2833';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
     function gameLoop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        let dt = (timestamp - lastTime) / 1000;
+        lastTime = timestamp;
+
         if (gameState === 'START') {
             drawStartScreen(timestamp);
-            drawLasers(); // Show laser if they click
+            drawLasers(); 
+            animationId = requestAnimationFrame(gameLoop);
+            return;
+        }
+
+        if (gameState === 'SELECTING') {
+            drawLasers(); // Lasers still work behind the menu!
             animationId = requestAnimationFrame(gameLoop);
             return;
         }
@@ -559,6 +738,16 @@
             return;
         }
 
+        if (gameState === 'PLAYING' && pauseTimer <= 0) {
+            if (isTimerActive) {
+                timeRemaining -= dt;
+                if (timeRemaining <= 0) {
+                    timeRemaining = 0;
+                    triggerTimeout();
+                }
+            }
+        }
+
         drawUI();
         drawLasers();
 
@@ -588,19 +777,20 @@
         lasers.push({ startX: canvas.width/2, startY: canvas.height, endX: clickX, endY: clickY, life: 10 });
         playSound('shoot', 1);
 
-        // --- Handle Click on START Screen ---
         if (gameState === 'START') {
-            gameState = 'PLAYING';
-            generateScenario();
+            gameState = 'SELECTING';
+            selectionScreen.style.display = 'block';
+            ctx.fillStyle = '#1f2833';
+            ctx.fillRect(0, 0, canvas.width, canvas.height); // Clear start text
             return;
         }
 
-        // --- Handle Click on GAMEOVER Screen ---
+        if (gameState === 'SELECTING') return; // Buttons handle their own clicks
+
         if (gameState === 'GAMEOVER') {
             const centralAlien = finalAliens[0];
             const dist = Math.sqrt((clickX - centralAlien.x) ** 2 + (clickY - centralAlien.y) ** 2);
             
-            // Panic the background aliens!
             finalAliens.forEach(alien => alien.panic(clickX, clickY));
 
             if (dist <= 70) {
@@ -629,7 +819,6 @@
             return; 
         }
 
-        // --- Standard Gameplay Target Logic ---
         let hit = false;
         targets.forEach((target) => {
             const dist = Math.sqrt((clickX - target.x) ** 2 + (clickY - target.y) ** 2);
@@ -649,6 +838,7 @@
                     score++;
                     flashColor = 'rgba(102, 252, 241, 0.3)'; 
                     flashTimer = 10;
+                    isTimerActive = false; 
                     
                     setTimeout(() => {
                         questionNumber++;
@@ -661,6 +851,7 @@
                     flashTimer = 10;
                     feedbackMsg = correctFormula;
                     pauseTimer = 180; 
+                    isTimerActive = false; 
                 }
             }
         });
@@ -671,6 +862,7 @@
         alienHue = 0; 
         bonusScore = 0; 
         comboMultiplier = 1;
+        isTimerActive = false;
         
         finalAliens = [];
         finalAliens.push(new FinalScreenAlien(true));
@@ -690,23 +882,6 @@
         }
     }
 
-    function resetGame() {
-        gameState = 'PLAYING';
-        score = 0;
-        questionNumber = 1;
-        confetti = [];
-        lasers = [];
-        history = [];
-        alienHue = 0;
-        bonusScore = 0;
-        finalAliens = [];
-        summaryScreen.style.display = 'none'; 
-        summaryScreen.style.zIndex = 20; 
-        restartBtn.style.display = 'none';
-        generateScenario();
-    }
-
-    // Start Animation Loop (waits on Intro Screen)
     requestAnimationFrame(gameLoop);
 
 </script>
