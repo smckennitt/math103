@@ -58,7 +58,7 @@
             overflow-y: auto;
             color: #c5c6c7;
             z-index: 10;
-            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            box-shadow: 0 0 30px rgba(0,0,0,0.9);
         }
         #summaryScreen h2 { margin-top: 0; color: #66fcf1; text-align: center; }
         .summary-item {
@@ -71,16 +71,20 @@
         .summary-incorrect { color: #e74c3c; }
         .summary-correct { color: #2ecc71; }
         
-        /* Custom Scrollbar for Summary */
         #summaryScreen::-webkit-scrollbar { width: 8px; }
         #summaryScreen::-webkit-scrollbar-track { background: #1f2833; border-radius: 4px; }
         #summaryScreen::-webkit-scrollbar-thumb { background: #45a29e; border-radius: 4px; }
 
-        #restartBtn {
-            display: none;
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
             margin-top: 20px;
-            padding: 15px 40px;
-            font-size: 1.5em;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 1.2em;
             background-color: #66fcf1;
             color: #0b0c10;
             border: none;
@@ -90,10 +94,13 @@
             font-family: 'Courier New', Courier, monospace;
             transition: transform 0.2s, background-color 0.2s;
         }
-        #restartBtn:hover {
+        button:hover {
             background-color: #45a29e;
             transform: scale(1.05);
         }
+        #restartBtn { display: none; }
+        .close-btn { background-color: #e74c3c; color: white; margin-top: 10px; width: 100%; }
+        .close-btn:hover { background-color: #c0392b; }
     </style>
 </head>
 <body>
@@ -106,7 +113,9 @@
         <div id="summaryScreen"></div>
     </div>
     
-    <button id="restartBtn" onclick="resetGame()">PLAY AGAIN</button>
+    <div class="btn-group">
+        <button id="restartBtn" onclick="resetGame()">PLAY AGAIN</button>
+    </div>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
@@ -114,7 +123,6 @@
     const restartBtn = document.getElementById('restartBtn');
     const summaryScreen = document.getElementById('summaryScreen');
 
-    // Audio Context for sound effects
     let audioCtx;
     function initAudio() {
         if (!audioCtx) {
@@ -134,10 +142,11 @@
 
         const now = audioCtx.currentTime;
         if (type === 'shoot') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(880, now);
-            osc.frequency.exponentialRampToValueAtTime(110, now + 0.15);
-            gainNode.gain.setValueAtTime(0.1, now);
+            // Updated synth for a snappier plasma 'pew'
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(800, now);
+            osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
+            gainNode.gain.setValueAtTime(0.2, now);
             gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
             osc.start(now);
             osc.stop(now + 0.15);
@@ -161,14 +170,13 @@
         }
     }
 
-    // Game Variables
     let score = 0;
     let questionNumber = 1;
     const totalQuestions = 10;
     let isGameOver = false;
     let targets = [];
     let confetti = [];
-    let history = []; // Tracks student answers for the summary
+    let history = []; 
     let currentQuestion = "";
     let correctFormula = "";
     let correctAnswer = 0;
@@ -178,6 +186,7 @@
     let feedbackMsg = "";
     let pauseTimer = 0;
     let lasers = [];
+    let alienHue = 0; // Tracks the color shift of the end-screen alien
 
     const alienEmojis = ['👾', '👽', '🛸', '🤖'];
 
@@ -248,9 +257,7 @@
         let gross, deductions, net;
         let offsets = [];
 
-        // DIFFICULTY PROGRESSION LOGIC
         if (questionNumber <= 4) {
-            // Level 1-4: Easy Net Pay
             gross = (Math.floor(Math.random() * 5) + 2) * 100; 
             deductions = (Math.floor(Math.random() * 4) + 1) * 10; 
             net = gross - deductions;
@@ -261,7 +268,6 @@
             offsets = [10, 20, 50, 100];
             
         } else if (questionNumber <= 7) {
-            // Level 5-7: Moderate Gross Pay
             net = (Math.floor(Math.random() * 6) + 4) * 50; 
             deductions = (Math.floor(Math.random() * 4) + 2) * 20; 
             gross = net + deductions;
@@ -272,7 +278,6 @@
             offsets = [20, 40, 50, 100];
 
         } else {
-            // Level 8-10: Trickier Deductions
             gross = (Math.floor(Math.random() * 6) + 12) * 25; 
             deductions = (Math.floor(Math.random() * 5) + 3) * 15; 
             net = gross - deductions;
@@ -288,10 +293,7 @@
             let offset = offsets[Math.floor(Math.random() * offsets.length)];
             let isAdding = Math.random() > 0.5;
             let wrongAns = isAdding ? correctAnswer + offset : correctAnswer - offset;
-            
-            if (!answers.includes(wrongAns) && wrongAns > 0) {
-                answers.push(wrongAns);
-            }
+            if (!answers.includes(wrongAns) && wrongAns > 0) answers.push(wrongAns);
         }
 
         answers.sort(() => Math.random() - 0.5);
@@ -361,19 +363,28 @@
         }
     }
 
-    function drawDancingAlien(time) {
+    function drawEndScreenAlien(time) {
         ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2 - 40);
+        ctx.translate(canvas.width / 2, canvas.height / 2 + 20);
+        
+        // Apply the color shifting filter
+        ctx.filter = `hue-rotate(${alienHue}deg)`;
+        
+        // Bobbing up and down + slight rotation
         ctx.translate(0, Math.sin(time / 150) * 20); 
         ctx.rotate(Math.sin(time / 200) * 0.2);
         
-        ctx.font = '100px Arial';
+        ctx.font = '120px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('👽', 0, 0);
         
-        ctx.font = '40px Arial';
-        ctx.fillText('🙌', 0, -80);
+        // Dancing hands if perfect score
+        if (score === 10) {
+            ctx.font = '50px Arial';
+            ctx.fillText('🙌', 0, -90);
+        }
+        
         ctx.restore();
     }
 
@@ -396,20 +407,26 @@
                 }
             });
         }
+        html += '<button class="close-btn" onclick="closeSummary()">Close Summary & Blast Alien</button>';
         
         summaryScreen.innerHTML = html;
         summaryScreen.style.display = 'block';
     }
 
+    function closeSummary() {
+        summaryScreen.style.display = 'none';
+    }
+
     function gameLoop(timestamp) {
+        ctx.fillStyle = '#1f2833';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
         if (isGameOver) {
-            ctx.fillStyle = '#0b0c10';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
+            drawEndScreenAlien(timestamp);
+            drawLasers();
+
             if (score === 10) {
                 confetti.forEach(c => { c.update(); c.draw(); });
-                drawDancingAlien(timestamp);
-                
                 ctx.fillStyle = '#66fcf1';
                 ctx.font = 'bold 45px Courier New';
                 ctx.textAlign = 'center';
@@ -428,9 +445,6 @@
             animationId = requestAnimationFrame(gameLoop);
             return;
         }
-
-        ctx.fillStyle = '#1f2833';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         drawUI();
         drawLasers();
@@ -451,12 +465,15 @@
 
     canvas.addEventListener('mousedown', (e) => {
         initAudio(); 
-        if (isGameOver || pauseTimer > 0) return; 
+        
+        // Prevent shooting if the summary screen is open or game is paused on a wrong answer
+        if (summaryScreen.style.display === 'block' || pauseTimer > 0) return; 
 
         const rect = canvas.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
 
+        // Visual and audio effects for the laser shoot (works even on end screen)
         lasers.push({
             startX: canvas.width / 2,
             startY: canvas.height,
@@ -466,14 +483,27 @@
         });
         playSound('shoot');
 
-        let hit = false;
+        // Logic for the end-screen interactive alien
+        if (isGameOver) {
+            // Alien hit-box coordinates (centered)
+            const alienX = canvas.width / 2;
+            const alienY = canvas.height / 2 + 20;
+            const dist = Math.sqrt((clickX - alienX) ** 2 + (clickY - alienY) ** 2);
+            
+            // If they blast the alien on the end screen, shift its color
+            if (dist <= 70) {
+                alienHue += Math.floor(Math.random() * 120) + 50; 
+            }
+            return; // Exit out of the listener so it doesn't process standard targets
+        }
 
+        // Logic for standard gameplay targets
+        let hit = false;
         targets.forEach((target) => {
             const dist = Math.sqrt((clickX - target.x) ** 2 + (clickY - target.y) ** 2);
             if (dist <= target.radius && !hit) {
                 hit = true;
                 
-                // Save answer to history for the summary screen
                 history.push({
                     qNum: questionNumber,
                     question: currentQuestion,
@@ -506,8 +536,9 @@
 
     function endGame() {
         isGameOver = true;
+        alienHue = 0; // Reset color
         restartBtn.style.display = 'block';
-        showSummary(); // Trigger the overlay
+        showSummary(); 
         
         if (score === 10) {
             playSound('win');
@@ -524,12 +555,12 @@
         confetti = [];
         lasers = [];
         history = [];
-        summaryScreen.style.display = 'none'; // Hide overlay on restart
+        alienHue = 0;
+        summaryScreen.style.display = 'none'; 
         restartBtn.style.display = 'none';
         generateScenario();
     }
 
-    // Start Game
     generateScenario();
     requestAnimationFrame(gameLoop);
 
