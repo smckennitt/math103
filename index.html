@@ -181,12 +181,10 @@
         }
     }
 
-    // Money Helper Functions
     function formatMoney(num) {
         return num % 1 !== 0 ? num.toFixed(2) : num;
     }
 
-    // Game States: 'START', 'SELECTING', 'PLAYING', 'GAMEOVER'
     let gameState = 'START'; 
     let gameMode = 1; 
     let score = 0;
@@ -461,15 +459,21 @@
         let answers = [];
         let prefix = '$';
 
-        if (questionNumber <= 2) {
-            let monthly = (Math.floor(Math.random() * 20) + 10) * 100; 
-            let annual = monthly * 12;
-            currentQuestion = `Salary: $${monthly}/month. Shoot ANNUAL INCOME!`;
-            correctAnswer = annual;
-            correctFormula = `$${monthly}/mo x 12 months = $${annual}`;
-            answers = [annual, monthly * 10, monthly * 24, monthly * 52];
-
-        } else if (questionNumber <= 4) {
+        if (questionNumber === 1) {
+            if (Math.random() > 0.5) {
+                currentQuestion = `Paid every two weeks. How many pay periods in a year?`;
+                correctAnswer = 26;
+                correctFormula = `52 weeks ÷ 2 = 26 pay periods.`;
+                prefix = '';
+                answers = [26, 24, 52, 12];
+            } else {
+                currentQuestion = `Paid weekly. How many pay periods in a year?`;
+                correctAnswer = 52;
+                correctFormula = `There are 52 weeks in a year = 52 pay periods.`;
+                prefix = '';
+                answers = [52, 26, 24, 12];
+            }
+        } else if (questionNumber === 2) {
             let pct = (Math.floor(Math.random() * 8) + 2) + 0.25 * Math.floor(Math.random() * 4); 
             let dec = (pct / 100).toFixed(4).replace(/0+$/, '').replace(/\.$/, ''); 
             currentQuestion = `Convert ${pct}% to a decimal!`;
@@ -477,17 +481,46 @@
             correctFormula = `${pct} ÷ 100 = ${dec}`;
             prefix = '';
             answers = [dec, (pct/10).toFixed(3), (pct).toFixed(2), (pct/1000).toFixed(5)];
-
-        } else if (questionNumber <= 6) {
-            let pct = Math.floor(Math.random() * 10) + 5; 
-            let sale = (Math.floor(Math.random() * 40) + 10) * 100; 
-            let comm = Math.round(sale * (pct / 100) * 100) / 100;
-            currentQuestion = `${pct}% commission on a $${sale} sale. EARNINGS?`;
-            correctAnswer = comm;
-            correctFormula = `$${sale} x ${pct}% = $${formatMoney(comm)}`;
-            answers = [comm, Math.round(sale * (pct/10) * 100)/100, comm + 100, Math.round(sale * 0.01 * 100)/100];
-
-        } else if (questionNumber <= 8) {
+        } else if (questionNumber === 3) {
+            let base = (Math.floor(Math.random() * 16) + 20) * 10; 
+            let ot = (Math.floor(Math.random() * 8) + 5) * 10; 
+            let total = base + ot;
+            currentQuestion = `Base pay: $${base} | Overtime pay: $${ot} | TOTAL PAY?`;
+            correctAnswer = total;
+            correctFormula = `Base ($${base}) + OT ($${ot}) = Total ($${total})`;
+            answers = [total, base, ot, total + 50];
+        } else if (questionNumber === 4) {
+            let monthly = (Math.floor(Math.random() * 20) + 10) * 100; 
+            let annual = monthly * 12;
+            currentQuestion = `Salary: $${monthly}/month. Shoot ANNUAL INCOME!`;
+            correctAnswer = annual;
+            correctFormula = `$${monthly}/mo x 12 months = $${annual}`;
+            answers = [annual, monthly * 10, monthly * 24, monthly * 52];
+        } else if (questionNumber === 5) {
+            let sell = (Math.floor(Math.random() * 5) + 4) * 10; 
+            let cost = (Math.floor(Math.random() * 5) + 2) * 5; 
+            let profit = sell - cost;
+            currentQuestion = `Sell item for $${sell}. Materials cost $${cost}. PROFIT?`;
+            correctAnswer = profit;
+            correctFormula = `Revenue ($${sell}) - Cost ($${cost}) = Profit ($${profit})`;
+            answers = [profit, sell + cost, cost, sell - cost + 10];
+        } else if (questionNumber === 6) {
+            if (Math.random() > 0.5) {
+                currentQuestion = `What is ISOLATION PAY?`;
+                correctAnswer = "RemoteBonus";
+                correctFormula = "Isolation pay is extra money for working in remote areas.";
+                prefix = '';
+                answers = ["RemoteBonus", "Sick Pay", "VacationPay", "Union Dues"];
+            } else {
+                let base = (Math.floor(Math.random() * 20) + 20) * 100; 
+                let iso = (Math.floor(Math.random() * 5) + 2) * 100; 
+                let total = base + iso;
+                currentQuestion = `Base: $${base} | Isolation Pay: $${iso} | TOTAL PAY?`;
+                correctAnswer = total;
+                correctFormula = `Base ($${base}) + Isolation ($${iso}) = Total ($${total})`;
+                answers = [total, base - iso, base, iso];
+            }
+        } else if (questionNumber === 7) {
             let wage = Math.floor(Math.random() * 10) + 15; 
             let hrs = Math.floor(Math.random() * 6) + 4; 
             let pay = Math.round(wage * 1.5 * hrs * 100) / 100;
@@ -495,28 +528,63 @@
             correctAnswer = pay;
             correctFormula = `$${wage} x 1.5 x ${hrs} hrs = $${formatMoney(pay)}`;
             answers = [pay, wage * hrs, wage * 2 * hrs, Math.round((wage * 1.5 * hrs + wage) * 100) / 100];
-
+        } else if (questionNumber === 8) {
+            let wage = Math.floor(Math.random() * 10) + 15; 
+            let rate = wage * 2.5;
+            currentQuestion = `Wage: $${wage}/hr. DOUBLE TIME AND A HALF rate?`;
+            correctAnswer = rate;
+            correctFormula = `$${wage} x 2.5 = $${formatMoney(rate)}/hr`;
+            answers = [rate, wage * 2, wage * 1.5, wage * 3];
         } else if (questionNumber === 9) {
-            currentQuestion = `What is ISOLATION PAY?`;
-            correctAnswer = "RemoteBonus";
-            correctFormula = "Isolation pay is extra money for working in remote areas.";
-            prefix = '';
-            answers = ["RemoteBonus", "Sick Pay", "VacationPay", "Union Dues"];
-            
+            let pct = Math.floor(Math.random() * 10) + 5; 
+            let sale = (Math.floor(Math.random() * 40) + 10) * 100; 
+            let comm = Math.round(sale * (pct / 100) * 100) / 100;
+            currentQuestion = `${pct}% commission on a $${sale} sale. EARNINGS?`;
+            correctAnswer = comm;
+            correctFormula = `$${sale} x ${pct}% = $${formatMoney(comm)}`;
+            answers = [comm, Math.round(sale * (pct/10) * 100)/100, comm + 100, Math.round(sale * 0.01 * 100)/100];
         } else {
-            let base = (Math.floor(Math.random() * 20) + 20) * 100; 
-            let iso = (Math.floor(Math.random() * 5) + 2) * 100; 
-            let total = base + iso;
-            currentQuestion = `Base: $${base} | Isolation Pay: $${iso} | TOTAL PAY?`;
-            correctAnswer = total;
-            correctFormula = `Base ($${base}) + Isolation ($${iso}) = Total ($${total})`;
-            answers = [total, base - iso, base, iso];
+            // Boss Level - Randomly picks one of the hard math scenarios
+            let rand = Math.floor(Math.random() * 3);
+            if (rand === 0) {
+                 let wage = Math.floor(Math.random() * 10) + 15; 
+                 let hrs = 8; 
+                 let pay = Math.round(wage * 1.5 * hrs * 100) / 100;
+                 currentQuestion = `Holiday! $${wage}/hr for ${hrs} hrs @ time-and-a-half. PAY?`;
+                 correctAnswer = pay;
+                 correctFormula = `$${wage} x 1.5 x ${hrs} hrs = $${formatMoney(pay)}`;
+                 answers = [pay, wage * hrs, wage * 2 * hrs, Math.round((wage * 1.5 * hrs + wage) * 100) / 100];
+            } else if (rand === 1) {
+                let wage = Math.floor(Math.random() * 10) + 15; 
+                let rate = wage * 2.5;
+                currentQuestion = `Wage: $${wage}/hr. DOUBLE TIME AND A HALF rate?`;
+                correctAnswer = rate;
+                correctFormula = `$${wage} x 2.5 = $${formatMoney(rate)}/hr`;
+                answers = [rate, wage * 2, wage * 1.5, wage * 3];
+            } else {
+                let sell = (Math.floor(Math.random() * 5) + 4) * 10; 
+                let cost = (Math.floor(Math.random() * 5) + 2) * 5; 
+                let profit = sell - cost;
+                currentQuestion = `Sell item for $${sell}. Materials cost $${cost}. PROFIT?`;
+                correctAnswer = profit;
+                correctFormula = `Revenue ($${sell}) - Cost ($${cost}) = Profit ($${profit})`;
+                answers = [profit, sell + cost, cost, sell - cost + 10];
+            }
         }
 
         let finalAnswers = [correctAnswer];
         for (let i = 1; i < answers.length && finalAnswers.length < 4; i++) {
-            if (!finalAnswers.includes(answers[i]) && answers[i] > 0 && answers[i] !== correctAnswer) {
+            if (!finalAnswers.includes(answers[i]) && answers[i] !== correctAnswer && answers[i] > 0) {
                 finalAnswers.push(answers[i]);
+            }
+        }
+        
+        // Ensure 4 answers by adding offsets if necessary
+        while(finalAnswers.length < 4) {
+            let offset = Math.floor(Math.random() * 20) + 1;
+            let wrong = typeof correctAnswer === 'number' ? correctAnswer + offset : correctAnswer + "X";
+            if (!finalAnswers.includes(wrong)) {
+                finalAnswers.push(wrong);
             }
         }
 
