@@ -42,7 +42,6 @@
             box-shadow: 0 0 30px rgba(102, 252, 241, 0.3);
             display: block;
         }
-        /* Overlays for Summary and Selection */
         .overlay-screen {
             display: none;
             position: absolute;
@@ -182,9 +181,14 @@
         }
     }
 
+    // Money Helper Functions
+    function formatMoney(num) {
+        return num % 1 !== 0 ? num.toFixed(2) : num;
+    }
+
     // Game States: 'START', 'SELECTING', 'PLAYING', 'GAMEOVER'
     let gameState = 'START'; 
-    let gameMode = 1; // 1 = Deductions, 2 = Salary
+    let gameMode = 1; 
     let score = 0;
     let questionNumber = 1;
     const totalQuestions = 10;
@@ -201,13 +205,11 @@
     let pauseTimer = 0;
     let lasers = [];
     
-    // Timer & Mechanics Variables
     let lastTime = 0;
     let timeRemaining = 30;
     let isTimerActive = false;
     let currentSpeedMult = 1;
 
-    // End-screen variables
     let finalAliens = [];
     let alienHue = 0; 
     let bonusScore = 0;
@@ -343,14 +345,21 @@
             ctx.fillText(this.emoji, this.x, this.y - 15);
 
             ctx.fillStyle = '#66fcf1';
-            // Adjust font size for text-based answers
+            
+            let displayVal = this.value;
+            if (this.prefix === '$' && typeof this.value === 'number') {
+                if (this.value % 1 !== 0) {
+                    displayVal = this.value.toFixed(2);
+                }
+            }
+
             if (typeof this.value === 'string' && this.value.length > 6) {
                 ctx.font = 'bold 13px Courier New';
             } else {
                 ctx.font = 'bold 22px Courier New';
             }
             
-            ctx.fillText(this.prefix + this.value, this.x, this.y + 25);
+            ctx.fillText(this.prefix + displayVal, this.x, this.y + 25);
         }
 
         update() {
@@ -377,7 +386,6 @@
         targets = [];
         feedbackMsg = "";
         
-        // Dynamic speed and timer rules
         if (questionNumber <= 4) {
             currentSpeedMult = 1.0;
             isTimerActive = false;
@@ -433,7 +441,6 @@
             answers = [deductions, deductions + 15, deductions - 15, deductions + 25, deductions + 50];
         }
 
-        // Keep correct answer, grab 3 unique distractors
         let finalAnswers = [correctAnswer];
         for (let i = 1; i < answers.length && finalAnswers.length < 4; i++) {
             if (!finalAnswers.includes(answers[i]) && answers[i] > 0) {
@@ -455,8 +462,7 @@
         let prefix = '$';
 
         if (questionNumber <= 2) {
-            // Annual vs Monthly
-            let monthly = (Math.floor(Math.random() * 20) + 10) * 100; // 1000 to 3000
+            let monthly = (Math.floor(Math.random() * 20) + 10) * 100; 
             let annual = monthly * 12;
             currentQuestion = `Salary: $${monthly}/month. Shoot ANNUAL INCOME!`;
             correctAnswer = annual;
@@ -464,7 +470,6 @@
             answers = [annual, monthly * 10, monthly * 24, monthly * 52];
 
         } else if (questionNumber <= 4) {
-            // Percent to Decimal
             let pct = (Math.floor(Math.random() * 8) + 2) + 0.25 * Math.floor(Math.random() * 4); 
             let dec = (pct / 100).toFixed(4).replace(/0+$/, '').replace(/\.$/, ''); 
             currentQuestion = `Convert ${pct}% to a decimal!`;
@@ -474,27 +479,24 @@
             answers = [dec, (pct/10).toFixed(3), (pct).toFixed(2), (pct/1000).toFixed(5)];
 
         } else if (questionNumber <= 6) {
-            // Commission
             let pct = Math.floor(Math.random() * 10) + 5; 
             let sale = (Math.floor(Math.random() * 40) + 10) * 100; 
-            let comm = sale * (pct / 100);
+            let comm = Math.round(sale * (pct / 100) * 100) / 100;
             currentQuestion = `${pct}% commission on a $${sale} sale. EARNINGS?`;
             correctAnswer = comm;
-            correctFormula = `$${sale} x ${pct}% = $${comm}`;
-            answers = [comm, sale * (pct/10), comm + 100, sale * 0.01];
+            correctFormula = `$${sale} x ${pct}% = $${formatMoney(comm)}`;
+            answers = [comm, Math.round(sale * (pct/10) * 100)/100, comm + 100, Math.round(sale * 0.01 * 100)/100];
 
         } else if (questionNumber <= 8) {
-            // Time and a half
             let wage = Math.floor(Math.random() * 10) + 15; 
             let hrs = Math.floor(Math.random() * 6) + 4; 
-            let pay = wage * 1.5 * hrs;
+            let pay = Math.round(wage * 1.5 * hrs * 100) / 100;
             currentQuestion = `Holiday! $${wage}/hr for ${hrs} hrs @ time-and-a-half. PAY?`;
             correctAnswer = pay;
-            correctFormula = `$${wage} x 1.5 x ${hrs} hrs = $${pay}`;
-            answers = [pay, wage * hrs, wage * 2 * hrs, (wage * 1.5 * hrs) + wage];
+            correctFormula = `$${wage} x 1.5 x ${hrs} hrs = $${formatMoney(pay)}`;
+            answers = [pay, wage * hrs, wage * 2 * hrs, Math.round((wage * 1.5 * hrs + wage) * 100) / 100];
 
         } else if (questionNumber === 9) {
-            // Isolation Pay Def
             currentQuestion = `What is ISOLATION PAY?`;
             correctAnswer = "RemoteBonus";
             correctFormula = "Isolation pay is extra money for working in remote areas.";
@@ -502,7 +504,6 @@
             answers = ["RemoteBonus", "Sick Pay", "VacationPay", "Union Dues"];
             
         } else {
-            // Isolation Math
             let base = (Math.floor(Math.random() * 20) + 20) * 100; 
             let iso = (Math.floor(Math.random() * 5) + 2) * 100; 
             let total = base + iso;
@@ -512,8 +513,13 @@
             answers = [total, base - iso, base, iso];
         }
 
-        // Shuffle and assign targets
-        let finalAnswers = answers.slice(0, 4);
+        let finalAnswers = [correctAnswer];
+        for (let i = 1; i < answers.length && finalAnswers.length < 4; i++) {
+            if (!finalAnswers.includes(answers[i]) && answers[i] > 0 && answers[i] !== correctAnswer) {
+                finalAnswers.push(answers[i]);
+            }
+        }
+
         finalAnswers.sort(() => Math.random() - 0.5);
 
         finalAnswers.forEach(ans => {
@@ -636,13 +642,15 @@
             history.forEach(item => {
                 if (!item.isRight) {
                     let prefix = typeof item.correct === 'number' && item.formula.includes('$') ? '$' : '';
-                    let chosenText = item.chosen === "Out of Time" ? item.chosen : `${prefix}${item.chosen}`;
+                    let formatVal = (val) => (typeof val === 'number' && val % 1 !== 0) ? val.toFixed(2) : val;
+                    
+                    let chosenText = item.chosen === "Out of Time" ? item.chosen : `${prefix}${formatVal(item.chosen)}`;
                     
                     html += `
                     <div class="summary-item">
                         <strong>Wave ${item.qNum}:</strong> ${item.question}<br>
                         Student Answer: <span class="summary-incorrect">${chosenText}</span> | 
-                        Correct Answer: <span class="summary-correct">${prefix}${item.correct}</span><br>
+                        Correct Answer: <span class="summary-correct">${prefix}${formatVal(item.correct)}</span><br>
                         <em>Review Formula: ${item.formula}</em>
                     </div>`;
                 }
@@ -682,7 +690,7 @@
         }
 
         if (gameState === 'SELECTING') {
-            drawLasers(); // Lasers still work behind the menu!
+            drawLasers(); 
             animationId = requestAnimationFrame(gameLoop);
             return;
         }
@@ -781,11 +789,11 @@
             gameState = 'SELECTING';
             selectionScreen.style.display = 'block';
             ctx.fillStyle = '#1f2833';
-            ctx.fillRect(0, 0, canvas.width, canvas.height); // Clear start text
+            ctx.fillRect(0, 0, canvas.width, canvas.height); 
             return;
         }
 
-        if (gameState === 'SELECTING') return; // Buttons handle their own clicks
+        if (gameState === 'SELECTING') return; 
 
         if (gameState === 'GAMEOVER') {
             const centralAlien = finalAliens[0];
