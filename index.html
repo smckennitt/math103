@@ -280,8 +280,12 @@
 
         update(time) {
             if (!this.isCentral) {
-                if (this.x + this.radius > canvas.width || this.x - this.radius < 0) this.dx *= -1;
-                if (this.y + this.radius > canvas.height || this.y - this.radius < 100) this.dy *= -1;
+                // FIXED: Check velocity direction to prevent getting stuck in walls
+                if (this.x + this.radius > canvas.width && this.dx > 0) this.dx *= -1;
+                if (this.x - this.radius < 0 && this.dx < 0) this.dx *= -1;
+                if (this.y + this.radius > canvas.height && this.dy > 0) this.dy *= -1;
+                if (this.y - this.radius < 100 && this.dy < 0) this.dy *= -1;
+                
                 this.x += this.dx;
                 this.y += this.dy;
             }
@@ -361,8 +365,11 @@
         }
 
         update() {
-            if (this.x + this.radius > canvas.width || this.x - this.radius < 0) this.dx *= -1;
-            if (this.y + this.radius > canvas.height || this.y - this.radius < 100) this.dy *= -1;
+            // FIXED: Check velocity direction to prevent vibrating inside walls
+            if (this.x + this.radius > canvas.width && this.dx > 0) this.dx *= -1;
+            if (this.x - this.radius < 0 && this.dx < 0) this.dx *= -1;
+            if (this.y + this.radius > canvas.height && this.dy > 0) this.dy *= -1;
+            if (this.y - this.radius < 100 && this.dy < 0) this.dy *= -1;
 
             this.x += this.dx;
             this.y += this.dy;
@@ -446,11 +453,20 @@
             }
         }
 
+        while(finalAnswers.length < 4) {
+            let offset = Math.floor(Math.random() * 20) + 1;
+            let wrong = correctAnswer + offset;
+            if (!finalAnswers.includes(wrong)) {
+                finalAnswers.push(wrong);
+            }
+        }
+
         finalAnswers.sort(() => Math.random() - 0.5);
 
         finalAnswers.forEach(ans => {
-            let safeX = Math.random() * (canvas.width - 120) + 60;
-            let safeY = Math.random() * (canvas.height - 180) + 120;
+            // FIXED: Safe spawning coordinates to stay out of the UI boundary entirely
+            let safeX = Math.random() * (canvas.width - 100) + 50;
+            let safeY = Math.random() * (canvas.height - 150 - 45) + 150; 
             targets.push(new Target(safeX, safeY, ans, ans === correctAnswer, currentSpeedMult, prefix));
         });
     }
@@ -544,7 +560,6 @@
             correctFormula = `$${sale} x ${pct}% = $${formatMoney(comm)}`;
             answers = [comm, Math.round(sale * (pct/10) * 100)/100, comm + 100, Math.round(sale * 0.01 * 100)/100];
         } else {
-            // Boss Level - Randomly picks one of the hard math scenarios
             let rand = Math.floor(Math.random() * 3);
             if (rand === 0) {
                  let wage = Math.floor(Math.random() * 10) + 15; 
@@ -574,15 +589,20 @@
 
         let finalAnswers = [correctAnswer];
         for (let i = 1; i < answers.length && finalAnswers.length < 4; i++) {
-            if (!finalAnswers.includes(answers[i]) && answers[i] !== correctAnswer && answers[i] > 0) {
+            // FIXED: Do not apply the `> 0` check to strings (which causes NaN and fails)
+            let isValid = (typeof answers[i] === 'string') || (answers[i] > 0);
+            
+            if (!finalAnswers.includes(answers[i]) && answers[i] !== correctAnswer && isValid) {
                 finalAnswers.push(answers[i]);
             }
         }
         
-        // Ensure 4 answers by adding offsets if necessary
+        let stringCounter = 1;
         while(finalAnswers.length < 4) {
             let offset = Math.floor(Math.random() * 20) + 1;
-            let wrong = typeof correctAnswer === 'number' ? correctAnswer + offset : correctAnswer + "X";
+            // FIXED: Ensure strings generated in the fallback loop are always unique
+            let wrong = typeof correctAnswer === 'number' ? correctAnswer + offset : correctAnswer + "-Err" + stringCounter++;
+            
             if (!finalAnswers.includes(wrong)) {
                 finalAnswers.push(wrong);
             }
@@ -591,8 +611,9 @@
         finalAnswers.sort(() => Math.random() - 0.5);
 
         finalAnswers.forEach(ans => {
-            let safeX = Math.random() * (canvas.width - 120) + 60;
-            let safeY = Math.random() * (canvas.height - 180) + 120;
+            // FIXED: Safe spawning coordinates
+            let safeX = Math.random() * (canvas.width - 100) + 50;
+            let safeY = Math.random() * (canvas.height - 150 - 45) + 150; 
             targets.push(new Target(safeX, safeY, ans, ans === correctAnswer, currentSpeedMult, prefix));
         });
     }
